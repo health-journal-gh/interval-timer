@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interval Walker</title>
+  <style>
+    :root {
+      --bg-dark: #121214;
+      --card-bg: #1e1e24;
+      --accent-green: #22c55e;
+      --accent-blue: #3b82f6;
+      --accent-amber: #f59e0b;
+      --text-main: #f3f4f6;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; min-height: 100vh; padding: 20px; }
+    
+    .container { max-width: 480px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 20px; }
+    h1 { text-align: center; font-size: 1.5rem; color: #a1a1aa; font-weight: 600; }
+    
+    .card { background-color: var(--card-bg); padding: 20px; border-radius: 16px; border: 1px solid #27272a; }
+    .input-group { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+    .input-row { display: flex; justify-content: space-between; align-items: center; }
+    label { font-size: 0.95rem; color: #d4d4d8; }
+    input { background: #09090b; border: 1px solid #3f3f46; color: #fff; padding: 10px 14px; border-radius: 8px; width: 90px; text-align: center; font-size: 1rem; }
+    
+    .btn { background-color: var(--accent-blue); color: #fff; font-size: 1.1rem; font-weight: 600; padding: 16px; border: none; border-radius: 12px; width: 100%; cursor: pointer; transition: opacity 0.2s; }
+    .btn:active { opacity: 0.8; }
+    .btn-danger { background-color: #ef4444; margin-top: 10px; }
+    
+    #timer-display { display: none; text-align: center; flex-direction: column; align-items: center; gap: 16px; padding: 30px 20px; }
+    .status-badge { font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; padding: 6px 16px; border-radius: 20px; background-color: #27272a; }
+    .status-normal { color: var(--accent-green); border: 1px solid var(--accent-green); }
+    .status-brisk { color: var(--accent-amber); border: 1px solid var(--accent-amber); }
+    .status-rest { color: var(--accent-blue); border: 1px solid var(--accent-blue); }
+    
+    .time-large { font-size: 4.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .meta-info { font-size: 1.1rem; color: #a1a1aa; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Interval Timer</h1>
+
+  <!-- Setup Screen -->
+  <div id="setup-card" class="card">
+    <div class="input-group">
+      <div class="input-row">
+        <label for="sets">Number of Sets</label>
+        <input type="number" id="sets" value="5" min="1">
+      </div>
+      <div class="input-row">
+        <label for="interval-min">Interval Duration (mins)</label>
+        <input type="number" id="interval-min" value="3" min="1">
+      </div>
+      <div class="input-row">
+        <label for="rest-sec">Rest Between Sets (secs)</label>
+        <input type="number" id="rest-sec" value="0" min="0">
+      </div>
+      <div class="input-row">
+        <label for="warning-sec">Warning Alert (secs before switch)</label>
+        <input type="number" id="warning-sec" value="10" min="0">
+      </div>
+    </div>
+    <button class="btn" onclick="startWorkout()">Start Workout</button>
+  </div>
+
+  <!-- Active Timer Screen -->
+  <div id="timer-display" class="card">
+    <div id="status-badge" class="status-badge status-normal">Normal Walk</div>
+    <div id="time-left" class="time-large">03:00</div>
+    <div id="set-tracker" class="meta-info">Set 1 of 5</div>
+    <button class="btn btn-danger" onclick="resetWorkout()">Stop</button>
+  </div>
+</div>
+
+<script>
+  let totalSets = 5;
+  let intervalSecs = 180;
+  let restSecs = 0;
+  let warningSecs = 10;
+  
+  let currentSet = 1;
+  let isBriskPhase = false;
+  let isRestPhase = false;
+  let timeRemaining = 0;
+  let timerId = null;
+  let warningTriggered = false;
+
+  function speak(text) {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // clear queue
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  }
+
+  function startWorkout() {
+    totalSets = parseInt(document.getElementById('sets').value) || 1;
+    intervalSecs = (parseInt(document.getElementById('interval-min').value) || 1) * 60;
+    restSecs = parseInt(document.getElementById('rest-sec').value) || 0;
+    warningSecs = parseInt(document.getElementById('warning-sec').value) || 10;
+
+    currentSet = 1;
+    isBriskPhase = false;
+    isRestPhase = false;
+    timeRemaining = intervalSecs;
+    warningTriggered = false;
+
+    document.getElementById('setup-card').style.display = 'none';
+    document.getElementById('timer-display').style.display = 'flex';
+    
+    updateUI();
+    speak("Starting workout. Normal walk.");
+    timerId = setInterval(tick, 1000);
+  }
+
+  function tick() {
+    if (timeRemaining > 0) {
+      timeRemaining--;
+
+      // Pre-interval Voice Warnings
+      if (timeRemaining === warningSecs && warningSecs > 0 && !warningTriggered) {
+        warningTriggered = true;
+        announceUpcomingPhase();
+      }
+    } else {
+      switchPhase();
+    }
+    updateUI();
+  }
+
+  function announceUpcomingPhase() {
+    if ("vibrate" in navigator) navigator.vibrate(100);
+
+    if (isRestPhase) {
+      speak("Get ready to start.");
+    } else if (!isBriskPhase) {
+      speak("Get ready to pick up the pace.");
+    } else {
+      if (currentSet < totalSets && restSecs > 0) {
+        speak("Get ready to rest.");
+      } else if (currentSet < totalSets) {
+        speak("Get ready to slow down.");
+      }
+    }
+  }
+
+  function switchPhase() {
+    if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
+    warningTriggered = false;
+
+    if (isRestPhase) {
+      isRestPhase = false;
+      isBriskPhase = false;
+      currentSet++;
+      timeRemaining = intervalSecs;
+      speak("Normal walk.");
+    } else if (!isBriskPhase) {
+      isBriskPhase = true;
+      timeRemaining = intervalSecs;
+      speak("Brisk walk now.");
+    } else {
+      if (currentSet < totalSets) {
+        if (restSecs > 0) {
+          isRestPhase = true;
+          timeRemaining = restSecs;
+          speak("Rest phase.");
+        } else {
+          isBriskPhase = false;
+          currentSet++;
+          timeRemaining = intervalSecs;
+          speak("Slow down. Normal walk.");
+        }
+      } else {
+        speak("Workout complete. Great job!");
+        resetWorkout();
+        return;
+      }
+    }
+  }
+
+  function updateUI() {
+    const mins = Math.floor(timeRemaining / 60).toString().padStart(2, '0');
+    const secs = (timeRemaining % 60).toString().padStart(2, '0');
+    document.getElementById('time-left').innerText = `${mins}:${secs}`;
+    document.getElementById('set-tracker').innerText = `Set ${currentSet} of ${totalSets}`;
+
+    const badge = document.getElementById('status-badge');
+    if (isRestPhase) {
+      badge.innerText = "Rest";
+      badge.className = "status-badge status-rest";
+    } else if (isBriskPhase) {
+      badge.innerText = "Brisk Walk";
+      badge.className = "status-badge status-brisk";
+    } else {
+      badge.innerText = "Normal Walk";
+      badge.className = "status-badge status-normal";
+    }
+  }
+
+  function resetWorkout() {
+    clearInterval(timerId);
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    document.getElementById('setup-card').style.display = 'block';
+    document.getElementById('timer-display').style.display = 'none';
+  }
+</script>
+</body>
+</html>
