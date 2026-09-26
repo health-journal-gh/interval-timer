@@ -26,9 +26,11 @@
     label { font-size: 0.95rem; color: #d4d4d8; }
     input { background: #09090b; border: 1px solid #3f3f46; color: #fff; padding: 10px 14px; border-radius: 8px; width: 90px; text-align: center; font-size: 1rem; }
     
+    .btn-group { display: flex; gap: 10px; width: 100%; margin-top: 10px; }
     .btn { background-color: var(--accent-blue); color: #fff; font-size: 1.1rem; font-weight: 600; padding: 16px; border: none; border-radius: 12px; width: 100%; cursor: pointer; transition: opacity 0.2s; }
     .btn:active { opacity: 0.8; }
-    .btn-danger { background-color: #ef4444; margin-top: 10px; }
+    .btn-warning { background-color: var(--accent-amber); }
+    .btn-danger { background-color: #ef4444; }
     
     #timer-display { display: none; text-align: center; flex-direction: column; align-items: center; gap: 16px; padding: 30px 20px; }
     .status-badge { font-size: 1rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; padding: 6px 16px; border-radius: 20px; background-color: #27272a; }
@@ -43,7 +45,7 @@
 <body>
 
 <div class="container">
-  <h1>Interval Timer</h1>
+  <h1>Interval Walker</h1>
 
   <!-- Setup Screen -->
   <div id="setup-card" class="card">
@@ -73,7 +75,11 @@
     <div id="status-badge" class="status-badge status-normal">Normal Walk</div>
     <div id="time-left" class="time-large">03:00</div>
     <div id="set-tracker" class="meta-info">Set 1 of 5</div>
-    <button class="btn btn-danger" onclick="resetWorkout()">Stop</button>
+    
+    <div class="btn-group">
+      <button id="pause-btn" class="btn btn-warning" onclick="togglePause()">Pause</button>
+      <button class="btn btn-danger" onclick="resetWorkout()">Stop</button>
+    </div>
   </div>
 </div>
 
@@ -89,10 +95,11 @@
   let timeRemaining = 0;
   let timerId = null;
   let warningTriggered = false;
+  let isPaused = false;
 
   function speak(text) {
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel(); // clear queue
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 1.0;
@@ -109,23 +116,47 @@
     currentSet = 1;
     isBriskPhase = false;
     isRestPhase = false;
+    isPaused = false;
     timeRemaining = intervalSecs;
     warningTriggered = false;
 
     document.getElementById('setup-card').style.display = 'none';
     document.getElementById('timer-display').style.display = 'flex';
+    document.getElementById('pause-btn').innerText = "Pause";
     
     updateUI();
     speak("Starting workout. Normal walk.");
     timerId = setInterval(tick, 1000);
   }
 
+  function togglePause() {
+    if (isPaused) {
+      isPaused = false;
+      document.getElementById('pause-btn').innerText = "Pause";
+      speak("Resuming workout.");
+      timerId = setInterval(tick, 1000);
+    } else {
+      isPaused = true;
+      clearInterval(timerId);
+      document.getElementById('pause-btn').innerText = "Resume";
+      speak("Workout paused.");
+    }
+  }
+
   function tick() {
     if (timeRemaining > 0) {
       timeRemaining--;
 
-      // Pre-interval Voice Warnings
-      if (timeRemaining === warningSecs && warningSecs > 0 && !warningTriggered) {
+      const isFinalInterval = (currentSet === totalSets && isBriskPhase);
+
+      // Final Workout End Countdown (last 5 seconds)
+      if (isFinalInterval && timeRemaining <= 5 && timeRemaining >= 1) {
+        if (timeRemaining === 5) {
+          speak("Your interval walking workout is ending in 5, 4, 3, 2, 1");
+        }
+      } 
+      // Regular Pre-interval Voice Warnings
+      else if (timeRemaining === warningSecs && warningSecs > 0 && !warningTriggered) {
         warningTriggered = true;
         announceUpcomingPhase();
       }
@@ -139,7 +170,7 @@
     if ("vibrate" in navigator) navigator.vibrate(100);
 
     if (isRestPhase) {
-      speak("Get ready to start.");
+      speak("Get ready to start normal walk.");
     } else if (!isBriskPhase) {
       speak("Get ready to pick up the pace.");
     } else {
@@ -178,7 +209,7 @@
           speak("Slow down. Normal walk.");
         }
       } else {
-        speak("Workout complete. Great job!");
+        speak("Workout is complete. Great job!");
         resetWorkout();
         return;
       }
